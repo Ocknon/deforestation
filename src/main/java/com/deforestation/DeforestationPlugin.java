@@ -91,6 +91,7 @@ public class DeforestationPlugin extends Plugin
 		{
 			choppedMap.clear();
 			DeforestationSaveFile.DeleteData();
+			client.addChatMessage(ChatMessageType.GAMEMESSAGE, "", "[Deforestation] Deleted saved file!", null);
 		}
 		HideCut();
 	}
