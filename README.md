@@ -1,2 +1,2 @@
-# Example
-An example greeter plugin
+# Deforestation
+Trees stay cut when you chop them.
