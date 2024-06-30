@@ -14,8 +14,8 @@ import net.runelite.client.events.ConfigChanged;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 
-import java.util.HashMap;
-import java.util.Map;
+import java.awt.event.WindowFocusListener;
+import java.util.*;
 
 @Slf4j
 @PluginDescriptor(
@@ -32,7 +32,10 @@ public class DeforestationPlugin extends Plugin
 	@Inject
 	private ClientThread clientThread;
 
-	private Map<WorldPoint, Integer> choppedMap = new HashMap<WorldPoint, Integer>();
+	private ExplosionEffectManager explosionManager;
+	private StumpManager stumpManager;
+
+	private HashMap<WorldPoint, TreeStumpData> choppedMap = new HashMap<>();
 	private TileObject selectedTree;
 	private boolean WasCutting;
 
@@ -45,21 +48,27 @@ public class DeforestationPlugin extends Plugin
 	@Override
 	protected void startUp()
 	{
+		explosionManager = new ExplosionEffectManager(client, config, clientThread);
+		stumpManager = new StumpManager(client, config, clientThread);
+
 		if (config.deleteSavedData())
 		{
-			DeforestationSaveFile.DeleteData();
+			SaveFileManager.DeleteData();
 		}
 
 		if (config.useSavedData() && config.deleteSavedData() == false)
 		{
 			choppedMap.clear();
-			choppedMap = DeforestationSaveFile.Load();
+			choppedMap = SaveFileManager.Load();
 		}
 	}
 
 	@Override
 	protected void shutDown()
 	{
+		explosionManager.OnShutDown();
+		stumpManager.OnShutDown();
+
 		choppedMap.clear();
 		clientThread.invoke(() ->
 		{
@@ -75,25 +84,58 @@ public class DeforestationPlugin extends Plugin
 	{
 		if (gameStateChanged.getGameState() == GameState.LOGGED_IN)
 		{
-			HideCut();
+			if (config.showStumps())
+			{
+				stumpManager.PruneStumpsOutOfScene();
+			}
 		}
 	}
 
 	@Subscribe
-	public  void onConfigChanged(ConfigChanged configChanged)
+	public void onConfigChanged(ConfigChanged event)
 	{
-		if (config.useSavedData())
+		if (event.getKey().equals("saveData") && config.useSavedData())
+		{
+			if (config.useSavedData())
+			{
+				choppedMap.clear();
+				choppedMap = SaveFileManager.Load();
+			}
+			HideCutTrees();
+		}
+
+		if (event.getKey().equals("deleteSave") && config.deleteSavedData())
 		{
 			choppedMap.clear();
-			choppedMap = DeforestationSaveFile.Load();
+			SaveFileManager.DeleteData();
+			HideCutTrees();
+
+			clientThread.invoke(() -> client.addChatMessage(ChatMessageType.GAMEMESSAGE, "", "[Deforestation] Deleted saved file!", null));
 		}
-		if (config.deleteSavedData())
+
+		if (event.getKey().equals("showStumps"))
 		{
-			choppedMap.clear();
-			DeforestationSaveFile.DeleteData();
-			client.addChatMessage(ChatMessageType.GAMEMESSAGE, "", "[Deforestation] Deleted saved file!", null);
+			if (config.showStumps())
+			{
+				clientThread.invoke(() ->
+				{
+					stumpManager.GenerateMultipleStumps(choppedMap);
+					HideCutTrees();
+				});
+			}
+			else if (config.showStumps() == false)
+			{
+				stumpManager.Dispose();
+				clientThread.invoke(() ->
+				{
+					if (client.getGameState() == GameState.LOGGED_IN)
+					{
+						client.setGameState(GameState.LOADING);
+					}
+					HideCutTrees();
+				});
+			}
 		}
-		HideCut();
 	}
 
 	@Subscribe
@@ -103,7 +145,7 @@ public class DeforestationPlugin extends Plugin
 		if (localPlayer != event.getActor()) { return; }
 
 		int animation = localPlayer.getAnimation();
-		if (DeforestationDataLookups.IsWoodcuttingAnimation(animation) == false) { return; }
+		if (DataFinder.IsWoodcuttingAnimation(animation) == false) { return; }
 
 		WasCutting = true;
 	}
@@ -112,9 +154,21 @@ public class DeforestationPlugin extends Plugin
 	public void onGameObjectSpawned(final GameObjectSpawned event)
 	{
 		GameObject gameObject = event.getGameObject();
-		if (DeforestationDataLookups.GetTreeID(gameObject.getId()) != -1)
+		if (DataFinder.GetTreeID(gameObject.getId()) != -1 && choppedMap.containsKey(gameObject.getWorldLocation()))
 		{
-			OnTreeSpawn();
+			// Tree spawned
+			HideCutTrees();
+		}
+		else if (WasCutting && DataFinder.GetStumpID(gameObject.getId()) != -1 && choppedMap.containsKey(gameObject.getWorldLocation()))
+		{
+			// Stump spawned
+			TreeStumpData data = choppedMap.get(gameObject.getWorldLocation());
+			data.stumpId = gameObject.getId();
+
+			SaveFileManager.Save(choppedMap);
+
+			WasCutting = false;
+			selectedTree = null;
 		}
 	}
 
@@ -122,7 +176,7 @@ public class DeforestationPlugin extends Plugin
 	public void onGameObjectDespawned(final GameObjectDespawned event)
 	{
 		GameObject gameObject = event.getGameObject();
-		if (DeforestationDataLookups.GetTreeID(gameObject.getId()) != -1)
+		if (DataFinder.GetTreeID(gameObject.getId()) != -1)
 		{
 			OnTreeCut(gameObject);
 		}
@@ -131,116 +185,67 @@ public class DeforestationPlugin extends Plugin
 	@Subscribe
 	public void onMenuOptionClicked(MenuOptionClicked menuOptionClicked)
 	{
-		switch (menuOptionClicked.getMenuAction())
+		if (DataFinder.IsInteractionClick(menuOptionClicked))
 		{
-			case WIDGET_TARGET_ON_GAME_OBJECT:
-			case GAME_OBJECT_FIRST_OPTION:
-			case GAME_OBJECT_SECOND_OPTION:
-			case GAME_OBJECT_THIRD_OPTION:
-			case GAME_OBJECT_FOURTH_OPTION:
-			case GAME_OBJECT_FIFTH_OPTION:
-			{
-				selectedTree = GetTreeObject(menuOptionClicked.getParam0(), menuOptionClicked.getParam1(), menuOptionClicked.getId());
-				break;
-			}
-			case WALK:
-			case WIDGET_TARGET_ON_WIDGET:
-			case WIDGET_TARGET_ON_GROUND_ITEM:
-			case WIDGET_TARGET_ON_PLAYER:
-			case GROUND_ITEM_FIRST_OPTION:
-			case GROUND_ITEM_SECOND_OPTION:
-			case GROUND_ITEM_THIRD_OPTION:
-			case GROUND_ITEM_FOURTH_OPTION:
-			case GROUND_ITEM_FIFTH_OPTION:
-			{
-				selectedTree = null;
-				break;
-			}
+			selectedTree = WorldHelpers.GetTreeTileObject(client, menuOptionClicked.getParam0(), menuOptionClicked.getParam1(), menuOptionClicked.getId());
+		}
+		else if (DataFinder.IsResetClick(menuOptionClicked))
+		{
+			selectedTree = null;
 		}
 	}
 
-	private void OnTreeSpawn()
+	@Subscribe
+	public void onGameTick(GameTick event)
 	{
-		HideCut();
+		explosionManager.OnGameTick();
 	}
 
 	private void OnTreeCut(GameObject gameObject)
 	{
 		if (WasCutting == false || selectedTree == null) { return; } // We were not cutting
-		if (IsSameWorldPos(selectedTree.getWorldLocation(), gameObject.getWorldLocation()) == false) { return; } // This isn't our tree
+		if (WorldHelpers.IsSameWorldPos(selectedTree.getWorldLocation(), gameObject.getWorldLocation()) == false) { return; } // This isn't our tree
 
 		if (choppedMap.containsKey((gameObject.getWorldLocation())) == false)
 		{
-			choppedMap.put(gameObject.getWorldLocation(), gameObject.getId());
+			choppedMap.put(gameObject.getWorldLocation(), new TreeStumpData(gameObject.getId(), 0, gameObject.getOrientation()));
 			if (config.useSavedData())
 			{
-				DeforestationSaveFile.Save(choppedMap);
+				HideCutTrees();
+				explosionManager.OnTreeCut(gameObject.getLocalLocation(), gameObject.getPlane());
 			}
 		}
-
-		WasCutting = false;
-		selectedTree = null;
 	}
 
-	private void HideCut()
+	private void HideCutTrees()
 	{
 		if (choppedMap.isEmpty()) { return; }
 
-		Scene scene = client.getScene();
-		Tile[][] tiles = scene.getTiles()[0];
-		for (int x = 0; x < Constants.SCENE_SIZE; x++)
+		if (config.showStumps())
 		{
-			for (int y = 0; y < Constants.SCENE_SIZE; y++)
+			stumpManager.PruneStumpsOutOfScene();
+		}
+
+		List<GameObject> foundTrees = WorldHelpers.GetObjectsFromScene(client, choppedMap.keySet());
+		if (foundTrees.isEmpty()) { return; }
+
+		for (GameObject gameObject : foundTrees)
+		{
+			if (gameObject == null) { continue; }
+
+			if (choppedMap.containsKey(gameObject.getWorldLocation()))
 			{
-				Tile tile = tiles[x][y];
-				if (tile == null) { continue; }
-
-				for (GameObject gameObject : tile.getGameObjects())
+				if (DataFinder.GetTreeID(gameObject.getId()) != -1)
 				{
-					if (gameObject == null) { continue; }
-
-					if (choppedMap.containsKey(gameObject.getWorldLocation()))
-					{
-						scene.removeGameObject(gameObject);
-					}
+					WorldHelpers.GetScene(client).removeGameObject(gameObject);
 				}
 			}
 		}
-	}
 
-	private TileObject GetTreeObject(int x, int y, int id)
-	{
-		if (DeforestationDataLookups.GetTreeID(id) == -1) { return null; }
-
-		Scene scene = client.getScene();
-		Tile[][][] tiles = scene.getTiles();
-		Tile tile = tiles[client.getPlane()][x][y];
-		if (tile == null) { return null; }
-
-		for (GameObject gameObject : tile.getGameObjects())
+		if (config.showStumps())
 		{
-			if (gameObject != null && gameObject.getId() == id)
-			{
-				return gameObject;
-			}
+			stumpManager.Dispose();
+			stumpManager.GenerateMultipleStumps(choppedMap);
 		}
-
-		// Redwoods might count as a wall object?
-		WallObject wallObject = tile.getWallObject();
-		if (wallObject != null && wallObject.getId() == id)
-		{
-			return wallObject;
-		}
-
-		return null;
-	}
-
-	private boolean IsSameWorldPos(WorldPoint point1, WorldPoint point2)
-	{
-		if (point1.getRegionX() != point2.getRegionX()) { return false; }
-		else if (point1.getRegionY() != point2.getRegionY()) { return false; }
-		else if (point1.getPlane() != point2.getPlane()) { return false; }
-
-		return true;
 	}
 }
