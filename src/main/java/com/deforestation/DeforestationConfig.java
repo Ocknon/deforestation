@@ -26,23 +26,16 @@ public interface DeforestationConfig extends Config
     @ConfigItem(
             keyName = "deleteSave",
             name = "Delete saved data",
-            description = "Delete saved file.",
+            description = "Delete saved file. DO NOT KEEP TOGGLED ON!",
             position = 3
     )
     default boolean deleteSavedData() { return false; }
 
     @ConfigItem(
-            keyName = "falloutMode",
-            name = "Fallout Mode",
-            description = "Fallout Mode",
-            position = 4
-    )
-    default boolean falloutMode() { return false; }
-
-    @ConfigItem(
             keyName = "debugLogs",
             name = "Log Debugs",
             description = "Dev - logs into console",
+            hidden = true,
             position = 4
     )
     default boolean devLogs() { return false; }
