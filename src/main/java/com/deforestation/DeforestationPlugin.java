@@ -1,7 +1,7 @@
 package com.deforestation;
 
 import javax.inject.Inject;
-
+import com.google.gson.Gson;
 import com.google.inject.Provides;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.*;
@@ -13,8 +13,6 @@ import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.events.ConfigChanged;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
-
-import java.awt.event.WindowFocusListener;
 import java.util.*;
 
 @Slf4j
@@ -32,6 +30,12 @@ public class DeforestationPlugin extends Plugin
 	@Inject
 	private ClientThread clientThread;
 
+	@Inject
+	private ConfigManager configManager;
+
+	@Inject
+	private Gson gson;
+
 	private ExplosionEffectManager explosionManager;
 	private StumpManager stumpManager;
 
@@ -40,7 +44,7 @@ public class DeforestationPlugin extends Plugin
 	private boolean WasCutting;
 
 	@Provides
-	DeforestationConfig provideConfig(ConfigManager configManager)
+	DeforestationConfig getConfig(ConfigManager configManager)
 	{
 		return configManager.getConfig(DeforestationConfig.class);
 	}
@@ -50,6 +54,7 @@ public class DeforestationPlugin extends Plugin
 	{
 		explosionManager = new ExplosionEffectManager(client, config, clientThread);
 		stumpManager = new StumpManager(client, config, clientThread);
+		SaveFileManager.Init(gson, configManager);
 
 		if (config.deleteSavedData())
 		{
@@ -109,8 +114,6 @@ public class DeforestationPlugin extends Plugin
 			choppedMap.clear();
 			SaveFileManager.DeleteData();
 			HideCutTrees();
-
-			clientThread.invoke(() -> client.addChatMessage(ChatMessageType.GAMEMESSAGE, "", "[Deforestation] Deleted saved file!", null));
 		}
 
 		if (event.getKey().equals("showStumps"))
@@ -213,6 +216,10 @@ public class DeforestationPlugin extends Plugin
 			{
 				HideCutTrees();
 				explosionManager.OnTreeCut(gameObject.getLocalLocation(), gameObject.getPlane());
+			}
+			if (config.devLogs())
+			{
+				log.info("[Deforestation] Tree cut at: {} with id: {}", gameObject.getWorldLocation(), gameObject.getId());
 			}
 		}
 	}

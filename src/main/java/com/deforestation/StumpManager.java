@@ -60,7 +60,7 @@ public class StumpManager
         }
     }
 
-    public void GenerateStumpObject(WorldPoint treeWorldPoint, LocalPoint treeLocalPoint, int stumpId, int orientation)
+    private void GenerateStumpObject(WorldPoint treeWorldPoint, LocalPoint treeLocalPoint, int stumpId, int orientation)
     {
         int modelId = DataFinder.GetModelIdFromStumpId(stumpId);
         if (modelId == -1) { return; }

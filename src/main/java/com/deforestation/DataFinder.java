@@ -293,6 +293,7 @@ public class DataFinder
         return -1;
     }
 
+    // Large is a 2x2 tile stump, needs to be centered on the 4 tiles
     public static boolean IsLargeStump (int stumpId)
     {
         switch (stumpId)
@@ -300,6 +301,7 @@ public class DataFinder
             case 36675: // Huge crystal
             case 1347: // Big dead 1/2
             case 6212: // Big dead 2/2
+            case 1342: // Average tree with weird sticks
             case 40753: // Isle of Souls
             case 36680: // Prifddinas
             case 30855: // Dead tree
