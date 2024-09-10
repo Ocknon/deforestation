@@ -165,6 +165,11 @@ public class DeforestationPlugin extends Plugin
 		else if (WasCutting && DataFinder.GetStumpID(gameObject.getId()) != -1 && choppedMap.containsKey(gameObject.getWorldLocation()))
 		{
 			// Stump spawned
+			if (config.devLogs())
+			{
+				log.info("[Deforestation] Stump spawned at: {} with id: {}", gameObject.getWorldLocation(), gameObject.getId());
+			}
+
 			TreeStumpData data = choppedMap.get(gameObject.getWorldLocation());
 			data.stumpId = gameObject.getId();
 

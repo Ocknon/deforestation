@@ -150,6 +150,7 @@ public class DataFinder
         switch (gameObjectId)
         {
             case 1342: // Tree
+            case 1355: // Evergreen
             case 36673: // Crystal tree 1/2
             case 36675: // Crystal tree 2/2
             case 1351: // Dead tree 1/4
@@ -289,6 +290,8 @@ public class DataFinder
             case 4819: // Jungle tree 1/2
             case 4821: // Jungle tree 2/2
                 return 4837;
+            case 1355: // Evergreen tree
+                return 1652;
         }
         return -1;
     }

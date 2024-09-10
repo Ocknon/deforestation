@@ -47,6 +47,8 @@ public class StumpManager
             WorldPoint point = (WorldPoint) choppedMap.keySet().toArray()[i];
             LocalPoint local = LocalPoint.fromWorld(view, point);
 
+            if (local == null) { continue; }
+
             // Offset big trees
             if (DataFinder.IsLargeStump(choppedMap.get(point).stumpId))
             {
